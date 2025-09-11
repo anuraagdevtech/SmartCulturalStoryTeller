@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cultural Storyteller</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; max-width: 900px; margin: 24px auto; padding: 16px; color: #222; }
+    input, select, textarea, button { font: inherit; }
+    .row { display:flex; gap:12px; margin-bottom:10px; }
+    .col { flex:1; }
+    label { font-weight:600; display:block; margin-bottom:6px; }
+    textarea { width:100%; min-height:90px; padding:8px; border-radius:6px; border:1px solid #ddd; }
+    input, select { width:100%; padding:8px; border-radius:6px; border:1px solid #ddd; }
+    button { padding:8px 12px; border-radius:6px; border:0; background:#2563eb; color:white; cursor:pointer; }
+    button[disabled] { opacity:.6; cursor:default; }
+    pre.story { white-space:pre-wrap; background:#fafafa; padding:12px; border-radius:6px; min-height:120px; }
+    .images { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    .imgbox { width:300px; border-radius:6px; overflow:hidden; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.06); }
+    .imgbox img { width:100%; display:block; }
+    .note { color:#555; font-size:13px; margin-top:8px; }
+    .error { color:#b00020; margin-top:8px; }
+  </style>
+</head>
+<body>
+
+  <h1>Cultural Storyteller (Simple)</h1>
+  <p class="note">Enter a custom prompt or fill the fields and click <strong>Generate Story</strong>. After the story appears, click <strong>Generate Images</strong>.</p>
+
+  <div class="row">
+    <div class="col">
+      <label>Culture</label>
+      <input id="culture" value="Telugu (South India)" />
+    </div>
+    <div class="col">
+      <label>Theme</label>
+      <input id="theme" value="wisdom" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <label>Length</label>
+      <select id="length">
+        <option value="short">Short</option>
+        <option value="medium">Medium</option>
+        <option value="long">Long</option>
+      </select>
+    </div>
+    <div class="col">
+      <label>Tone</label>
+      <select id="tone">
+        <option>warm</option>
+        <option>playful</option>
+        <option>moralistic</option>
+        <option>formal</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <label>Custom prompt (optional)</label>
+    <textarea id="prompt" placeholder="If you write a big prompt here it will be used directly (optional)"></textarea>
+  </div>
+
+  <div style="display:flex; gap:8px; margin-bottom:12px;">
+    <button id="genStoryBtn">Generate Story</button>
+    <button id="genImagesBtn" disabled>Generate Images</button>
+    <button id="clearBtn" style="background:#6b7280">Clear</button>
+  </div>
+
+  <div id="status" class="note"></div>
+  <div id="err" class="error"></div>
+
+  <section style="margin-top:16px">
+    <h2>Story</h2>
+    <pre id="story" class="story"><i>Click "Generate Story" to begin.</i></pre>
+  </section>
+
+  <section style="margin-top:16px">
+    <h2>Images</h2>
+    <div id="images" class="images"><i>No images yet.</i></div>
+  </section>
+
+<script>
+  const genStoryBtn = document.getElementById('genStoryBtn');
+  const genImagesBtn = document.getElementById('genImagesBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const storyEl = document.getElementById('story');
+  const imagesEl = document.getElementById('images');
+  const statusEl = document.getElementById('status');
+  const errEl = document.getElementById('err');
+
+  function buildPrompt() {
+    const p = document.getElementById('prompt').value.trim();
+    if (p.length > 10) return p;
+    const culture = document.getElementById('culture').value;
+    const theme = document.getElementById('theme').value;
+    const length = document.getElementById('length').value;
+    const tone = document.getElementById('tone').value;
+    return `Culture: ${culture}. Theme: ${theme}. Tone: ${tone}. Length: ${length}. Write a title, a story, and a one-line moral.`;
+  }
+
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  }
+
+  function clearUI() {
+    storyEl.textContent = '';
+    imagesEl.innerHTML = '<i>No images yet.</i>';
+    statusEl.textContent = '';
+    errEl.textContent = '';
+    genImagesBtn.disabled = true;
+  }
+
+  genStoryBtn.addEventListener('click', async () => {
+    errEl.textContent = '';
+    statusEl.textContent = 'Generating story...';
+    genStoryBtn.disabled = true;
+    genImagesBtn.disabled = true;
+
+    const payload = {
+      culture: document.getElementById('culture').value,
+      theme: document.getElementById('theme').value,
+      length: document.getElementById('length').value,
+      tone: document.getElementById('tone').value,
+      prompt: buildPrompt()
+    };
+
+    try {
+      const j = await postJSON('/api/generate_story', payload);
+      if (!j.ok) {
+        throw new Error(j.error || JSON.stringify(j));
+      }
+      const text = j.story || j.text || JSON.stringify(j);
+      storyEl.textContent = text;
+      statusEl.textContent = 'Story generated.';
+      genImagesBtn.disabled = false;
+    } catch (e) {
+      errEl.textContent = 'Error: ' + (e.message || e);
+      storyEl.textContent = '';
+      statusEl.textContent = '';
+    } finally {
+      genStoryBtn.disabled = false;
+    }
+  });
+
+  genImagesBtn.addEventListener('click', async () => {
+    errEl.textContent = '';
+    statusEl.textContent = 'Generating images...';
+    genImagesBtn.disabled = true;
+    genStoryBtn.disabled = true;
+
+    const storyText = storyEl.textContent || '';
+    const imagePrompt = storyText.length > 30
+      ? `Illustration: ${storyText.split('\\n')[0]} — respectful, traditional art style, detailed.`
+      : `Illustration: ${document.getElementById('theme').value} story from ${document.getElementById('culture').value} — respectful, traditional art style.`;
+
+    try {
+      const j = await postJSON('/api/generate_image', { prompt: imagePrompt, n: 3, size: '1024x1024' });
+      if (!j.ok) throw new Error(j.error || JSON.stringify(j));
+      const imgs = j.images || [];
+      imagesEl.innerHTML = '';
+      if (imgs.length === 0) {
+        imagesEl.innerHTML = '<i>No images returned.</i>';
+      } else {
+        for (const item of imgs) {
+          let src = null;
+          if (item.url) src = item.url;
+          else if (item.b64) src = 'data:image/png;base64,' + item.b64;
+          else if (item.b64_json) src = 'data:image/png;base64,' + item.b64_json;
+          else {
+            for (const k of Object.keys(item)) {
+              if (typeof item[k] === 'string' && item[k].length > 120) {
+                src = 'data:image/png;base64,' + item[k];
+                break;
+              }
+            }
+          }
+          const box = document.createElement('div');
+          box.className = 'imgbox';
+          if (src) {
+            const img = document.createElement('img');
+            img.src = src;
+            box.appendChild(img);
+          } else {
+            box.textContent = 'No preview available for this image.';
+            box.style.padding = '12px';
+          }
+          imagesEl.appendChild(box);
+        }
+      }
+      statusEl.textContent = 'Images created.';
+    } catch (e) {
+      errEl.textContent = 'Image error: ' + (e.message || e);
+    } finally {
+      genImagesBtn.disabled = false;
+      genStoryBtn.disabled = false;
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    document.getElementById('prompt').value = '';
+    clearUI();
+  });
+
+  clearUI();
+</script>
+
+</body>
+</html>
